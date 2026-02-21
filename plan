@@ -1,0 +1,1115 @@
+基于 RAG 的 AI 问答系统
+
+## 一、整体架构设计
+
+### 1.1 系统架构图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              接入层 (API Gateway)                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │  REST API   │  │  SSE Stream │  │   WebSocket │  │   Health Check      │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              应用服务层 (Application)                        │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │Chat Service │  │ RAG Service │  │Intent Service│  │  Prompt Service     │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │Index Service│  │ LLM Service │  │Rank Service │  │  Session Service    │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              核心引擎层 (Core Engine)                        │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                         RAG Pipeline Engine                             │ │
+│  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐            │ │
+│  │  │  Query   │ → │  Intent  │ → │ Retrieve │ → │  Rerank  │            │ │
+│  │  │  Parser  │   │  Classify│   │  Search  │   │  & Filter│            │ │
+│  │  └──────────┘   └──────────┘   └──────────┘   └──────────┘            │ │
+│  │       ↓              ↓              ↓              ↓                   │ │
+│  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐            │ │
+│  │  │  Context │ → │  Prompt  │ → │   LLM    │ → │ Response │            │ │
+│  │  │  Build   │   │  Assemble│   │ Generate │   │  Format  │            │ │
+│  │  └──────────┘   └──────────┘   └──────────┘   └──────────┘            │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                       │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              基础设施层 (Infrastructure)                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │  Vector DB  │  │  Relational │  │   Cache     │  │   Object Storage    │ │
+│  │(Milvus/Chroma)│  │   DB (PG)   │  │  (Redis)    │  │    (MinIO/S3)       │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │Embedding Svc│  │   LLM API   │  │  Doc Parser │  │   Message Queue     │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1.2 项目目录结构
+
+```
+Auto-Agent-X/
+├── app/
+│   ├── __init__.py
+│   ├── main.py                    # FastAPI 应用入口
+│   ├── api/                       # API 路由层
+│   │   ├── __init__.py
+│   │   ├── chat.py                # 对话接口
+│   │   ├── index.py               # 索引管理接口
+│   │   ├── document.py            # 文档管理接口
+│   │   └── health.py              # 健康检查
+│   ├── core/                      # 核心配置
+│   │   ├── __init__.py
+│   │   ├── config.py              # 配置管理
+│   │   ├── exceptions.py          # 自定义异常
+│   │   ├── middleware.py          # 中间件
+│   │   └── logging.py             # 日志配置
+│   ├── models/                    # 数据模型 (Pydantic + SQLAlchemy)
+│   │   ├── __init__.py
+│   │   ├── schemas/               # Pydantic 模型
+│   │   │   ├── chat.py
+│   │   │   ├── document.py
+│   │   │   └── index.py
+│   │   └── database/              # SQLAlchemy 模型
+│   │       ├── base.py
+│   │       ├── chat.py
+│   │       ├── document.py
+│   │       └── index.py
+│   ├── services/                  # 业务服务层
+│   │   ├── __init__.py
+│   │   ├── chat_service.py        # 对话服务
+│   │   ├── rag_service.py         # RAG 核心服务
+│   │   ├── intent_service.py      # 意图识别服务
+│   │   ├── retrieval_service.py   # 检索服务
+│   │   ├── ranking_service.py     # 排序服务
+│   │   ├── prompt_service.py      # 提示词服务
+│   │   ├── llm_service.py         # LLM 调用服务
+│   │   └── index_service.py       # 索引服务
+│   ├── engine/                    # RAG 引擎核心
+│   │   ├── __init__.py
+│   │   ├── pipeline.py            # 管道编排
+│   │   ├── nodes/                 # 处理节点
+│   │   │   ├── __init__.py
+│   │   │   ├── query_parser.py    # 查询解析
+│   │   │   ├── intent_classifier.py # 意图分类
+│   │   │   ├── retriever.py       # 检索器
+│   │   │   ├── reranker.py        # 重排序
+│   │   │   ├── context_builder.py # 上下文构建
+│   │   │   ├── prompt_builder.py  # 提示词构建
+│   │   │   └── response_generator.py # 响应生成
+│   │   └── components/            # 可复用组件
+│   │       ├── __init__.py
+│   │       ├── embeddings.py      # 嵌入模型
+│   │       ├── vector_store.py    # 向量存储
+│   │       ├── document_splitter.py # 文档切分
+│   │       └── ranker.py          # 排序算法
+│   ├── infrastructure/            # 基础设施
+│   │   ├── __init__.py
+│   │   ├── database.py            # 数据库连接
+│   │   ├── cache.py               # 缓存客户端
+│   │   ├── storage.py             # 对象存储
+│   │   └── llm_client.py          # LLM 客户端
+│   └── utils/                     # 工具函数
+│       ├── __init__.py
+│       ├── text_utils.py
+│       ├── file_utils.py
+│       └── token_utils.py
+├── tests/                         # 测试目录
+├── docs/                          # 文档
+├── scripts/                       # 脚本
+├── docker/                        # Docker 配置
+├── requirements.txt
+├── pyproject.toml
+└── README.md
+```
+
+---
+
+## 二、核心模块详细设计
+
+### 2.1 意图识别模块 (Intent Service)
+
+```python
+# app/services/intent_service.py
+from enum import Enum
+from typing import Dict, Any, Optional
+from pydantic import BaseModel
+
+class IntentType(str, Enum):
+    """意图类型枚举"""
+    CODE_SEARCH = "code_search"           # 代码搜索
+    CODE_EXPLAIN = "code_explain"         # 代码解释
+    CODE_REVIEW = "code_review"           # 代码审查
+    BUG_FIX = "bug_fix"                   # Bug 修复
+    REFACTOR = "refactor"                 # 重构建议
+    GENERAL_QA = "general_qa"             # 通用问答
+    CLARIFICATION = "clarification"       # 需要澄清
+
+class IntentResult(BaseModel):
+    """意图识别结果"""
+    intent: IntentType
+    confidence: float                     # 置信度 0-1
+    entities: Dict[str, Any]              # 提取的实体
+    suggested_prompt_template: str        # 建议的提示词模板
+    requires_clarification: bool          # 是否需要澄清
+
+class IntentService:
+    """意图识别服务"""
+
+    def __init__(self, llm_client, prompt_templates: Dict):
+        self.llm_client = llm_client
+        self.templates = prompt_templates
+        self.intent_classifier_prompt = """
+        分析用户问题，识别意图类型和关键实体。
+
+        可选意图类型：
+        - code_search: 搜索特定代码
+        - code_explain: 解释代码功能
+        - code_review: 审查代码质量
+        - bug_fix: 修复代码问题
+        - refactor: 重构建议
+        - general_qa: 通用技术问答
+
+        用户问题：{query}
+
+        请以 JSON 格式返回：
+        {
+            "intent": "意图类型",
+            "confidence": 0.95,
+            "entities": {
+                "language": "编程语言",
+                "component": "组件/模块",
+                "keywords": ["关键词1", "关键词2"]
+            }
+        }
+        """
+
+    async def classify(self, query: str, context: Optional[Dict] = None) -> IntentResult:
+        """
+        意图分类主方法
+
+        流程：
+        1. 使用 LLM 进行意图分类
+        2. 提取关键实体
+        3. 匹配提示词模板
+        4. 判断是否需要澄清
+        """
+        # 1. 构建分类提示词
+        prompt = self.intent_classifier_prompt.format(query=query)
+
+        # 2. 调用 LLM 进行分类
+        response = await self.llm_client.complete(
+            prompt=prompt,
+            temperature=0.1,  # 低温度确保确定性
+            response_format={"type": "json_object"}
+        )
+
+        # 3. 解析结果
+        classification = json.loads(response)
+
+        # 4. 匹配提示词模板
+        template_id = self._match_template(classification["intent"])
+
+        # 5. 判断是否需要澄清
+        requires_clarification = classification["confidence"] < 0.7
+
+        return IntentResult(
+            intent=IntentType(classification["intent"]),
+            confidence=classification["confidence"],
+            entities=classification["entities"],
+            suggested_prompt_template=template_id,
+            requires_clarification=requires_clarification
+        )
+
+    def _match_template(self, intent: str) -> str:
+        """根据意图匹配提示词模板"""
+        template_map = {
+            "code_search": "code_search_v1",
+            "code_explain": "code_explain_v1",
+            "code_review": "code_review_v1",
+            "bug_fix": "bug_fix_v1",
+            "refactor": "refactor_v1",
+            "general_qa": "general_qa_v1"
+        }
+        return template_map.get(intent, "default_v1")
+```
+
+### 2.2 向量检索模块 (Retrieval Service)
+
+```python
+# app/services/retrieval_service.py
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass
+import numpy as np
+
+@dataclass
+class RetrievalResult:
+    """检索结果"""
+    content: str
+    metadata: Dict[str, Any]
+    score: float
+    embedding: Optional[List[float]] = None
+
+class RetrievalService:
+    """检索服务 - 支持多策略混合检索"""
+
+    def __init__(
+        self,
+        vector_store,           # 向量存储
+        embedding_service,      # 嵌入服务
+        keyword_retriever,      # 关键词检索器 (BM25)
+        reranker                # 重排序模型
+    ):
+        self.vector_store = vector_store
+        self.embedding_service = embedding_service
+        self.keyword_retriever = keyword_retriever
+        self.reranker = reranker
+
+        # 检索配置
+        self.config = {
+            "vector_top_k": 20,           # 向量检索 Top K
+            "keyword_top_k": 20,          # 关键词检索 Top K
+            "final_top_k": 10,            # 最终返回数量
+            "vector_weight": 0.7,         # 向量检索权重
+            "keyword_weight": 0.3,        # 关键词检索权重
+            "similarity_threshold": 0.5   # 相似度阈值
+        }
+
+    async def retrieve(
+        self,
+        query: str,
+        filters: Optional[Dict] = None,
+        top_k: int = 10
+    ) -> List[RetrievalResult]:
+        """
+        混合检索主方法
+
+        流程：
+        1. 生成查询向量
+        2. 并行执行向量检索 + 关键词检索
+        3. 结果融合 (RRF)
+        4. 重排序
+        5. 过滤低质量结果
+        """
+        # 1. 生成查询向量
+        query_embedding = await self.embedding_service.embed_query(query)
+
+        # 2. 并行检索
+        vector_results, keyword_results = await asyncio.gather(
+            self._vector_search(query_embedding, filters),
+            self._keyword_search(query, filters)
+        )
+
+        # 3. 结果融合 (Reciprocal Rank Fusion)
+        fused_results = self._reciprocal_rank_fusion(
+            vector_results,
+            keyword_results
+        )
+
+        # 4. 重排序 (如果结果数量足够)
+        if len(fused_results) > top_k:
+            fused_results = await self._rerank(query, fused_results)
+
+        # 5. 过滤并返回 Top K
+        return fused_results[:top_k]
+
+    async def _vector_search(
+        self,
+        query_embedding: List[float],
+        filters: Optional[Dict]
+    ) -> List[RetrievalResult]:
+        """向量相似度检索"""
+        results = await self.vector_store.similarity_search(
+            embedding=query_embedding,
+            top_k=self.config["vector_top_k"],
+            filters=filters
+        )
+        return [
+            RetrievalResult(
+                content=r["content"],
+                metadata=r["metadata"],
+                score=r["score"],
+                embedding=r.get("embedding")
+            )
+            for r in results
+        ]
+
+    async def _keyword_search(
+        self,
+        query: str,
+        filters: Optional[Dict]
+    ) -> List[RetrievalResult]:
+        """关键词检索 (BM25)"""
+        results = await self.keyword_retriever.search(
+            query=query,
+            top_k=self.config["keyword_top_k"],
+            filters=filters
+        )
+        return [
+            RetrievalResult(
+                content=r["content"],
+                metadata=r["metadata"],
+                score=r["score"]
+            )
+            for r in results
+        ]
+
+    def _reciprocal_rank_fusion(
+        self,
+        vector_results: List[RetrievalResult],
+        keyword_results: List[RetrievalResult],
+        k: int = 60
+    ) -> List[RetrievalResult]:
+        """
+        RRF 融合算法
+
+        score = Σ(1 / (k + rank))
+        """
+        scores = {}
+        doc_map = {}
+
+        # 处理向量检索结果
+        for rank, result in enumerate(vector_results):
+            doc_id = result.metadata.get("doc_id")
+            scores[doc_id] = scores.get(doc_id, 0) + \
+                self.config["vector_weight"] * (1.0 / (k + rank))
+            doc_map[doc_id] = result
+
+        # 处理关键词检索结果
+        for rank, result in enumerate(keyword_results):
+            doc_id = result.metadata.get("doc_id")
+            scores[doc_id] = scores.get(doc_id, 0) + \
+                self.config["keyword_weight"] * (1.0 / (k + rank))
+            if doc_id not in doc_map:
+                doc_map[doc_id] = result
+
+        # 按融合分数排序
+        sorted_docs = sorted(
+            scores.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        # 更新分数并返回
+        results = []
+        for doc_id, score in sorted_docs:
+            result = doc_map[doc_id]
+            result.score = score
+            results.append(result)
+
+        return results
+
+    async def _rerank(
+        self,
+        query: str,
+        results: List[RetrievalResult]
+    ) -> List[RetrievalResult]:
+        """使用重排序模型优化结果顺序"""
+        pairs = [(query, r.content) for r in results]
+        rerank_scores = await self.reranker.rerank(pairs)
+
+        # 更新分数并重新排序
+        for result, score in zip(results, rerank_scores):
+            result.score = score
+
+        return sorted(results, key=lambda x: x.score, reverse=True)
+```
+
+### 2.3 提示词组装模块 (Prompt Service)
+
+```python
+# app/services/prompt_service.py
+from typing import Dict, List, Any, Optional
+from jinja2 import Template, Environment, BaseLoader
+from pydantic import BaseModel
+
+class PromptTemplate(BaseModel):
+    """提示词模板"""
+    id: str
+    name: str
+    description: str
+    template: str
+    variables: List[str]                    # 模板变量列表
+    system_prompt: Optional[str] = None     # 系统提示词
+    few_shot_examples: Optional[List[Dict]] = None  # Few-shot 示例
+
+class PromptService:
+    """提示词服务"""
+
+    def __init__(self, template_store):
+        self.template_store = template_store
+        self.jinja_env = Environment(loader=BaseLoader())
+
+        # 默认系统提示词
+        self.default_system_prompt = """你是一个专业的代码助手，擅长：
+1. 理解代码逻辑和架构
+2. 提供清晰的技术解释
+3. 给出可执行的代码建议
+
+请基于提供的上下文信息回答问题。如果上下文不足以回答问题，请明确说明。"""
+
+    async def assemble(
+        self,
+        template_id: str,
+        query: str,
+        context: Dict[str, Any],
+        chat_history: Optional[List[Dict]] = None
+    ) -> Dict[str, str]:
+        """
+        组装提示词
+
+        Args:
+            template_id: 模板 ID
+            query: 用户问题
+            context: 上下文信息 (检索结果等)
+            chat_history: 对话历史
+
+        Returns:
+            {"system": system_prompt, "user": user_prompt}
+        """
+        # 1. 获取模板
+        template = await self.template_store.get(template_id)
+
+        # 2. 构建变量
+        variables = {
+            "query": query,
+            "context": self._format_context(context),
+            "chat_history": self._format_history(chat_history) if chat_history else "",
+            **context  # 展开其他上下文变量
+        }
+
+        # 3. 渲染用户提示词
+        user_prompt = self._render_template(template.template, variables)
+
+        # 4. 构建系统提示词
+        system_prompt = template.system_prompt or self.default_system_prompt
+
+        # 5. 添加 Few-shot 示例
+        if template.few_shot_examples:
+            system_prompt += "\n\n示例:\n" + \
+                self._format_few_shot(template.few_shot_examples)
+
+        return {
+            "system": system_prompt,
+            "user": user_prompt
+        }
+
+    def _format_context(self, context: Dict) -> str:
+        """格式化检索上下文"""
+        if "retrieval_results" not in context:
+            return ""
+
+        formatted = []
+        for i, result in enumerate(context["retrieval_results"], 1):
+            formatted.append(f"""
+[文档 {i}]
+来源: {result.metadata.get('source', 'Unknown')}
+相关性: {result.score:.2f}
+内容:
+{result.content}
+---""")
+
+        return "\n".join(formatted)
+
+    def _format_history(self, history: List[Dict]) -> str:
+        """格式化对话历史"""
+        formatted = []
+        for msg in history[-5:]:  # 只保留最近 5 轮
+            role = "用户" if msg["role"] == "user" else "助手"
+            formatted.append(f"{role}: {msg['content']}")
+        return "\n".join(formatted)
+
+    def _render_template(self, template_str: str, variables: Dict) -> str:
+        """使用 Jinja2 渲染模板"""
+        template = self.jinja_env.from_string(template_str)
+        return template.render(**variables)
+
+    async def optimize_for_token_limit(
+        self,
+        prompt: Dict[str, str],
+        max_tokens: int,
+        tokenizer
+    ) -> Dict[str, str]:
+        """
+        根据 Token 限制优化提示词
+
+        策略：
+        1. 优先保留系统提示词
+        2. 压缩上下文 (移除低相关性文档)
+        3. 截断对话历史
+        4. 最后截断当前查询
+        """
+        # 计算当前 Token 数
+        total_tokens = sum(
+            len(tokenizer.encode(p))
+            for p in prompt.values()
+        )
+
+        if total_tokens <= max_tokens:
+            return prompt
+
+        # 需要压缩
+        excess = total_tokens - max_tokens
+
+        # 策略 1: 移除低相关性文档
+        # ... 实现压缩逻辑
+
+        return prompt
+```
+
+### 2.4 RAG 管道编排 (Pipeline)
+
+```python
+# app/engine/pipeline.py
+from typing import AsyncIterator, Dict, Any, Optional, Callable
+from dataclasses import dataclass
+import asyncio
+from enum import Enum
+
+class PipelineStage(str, Enum):
+    """管道阶段"""
+    QUERY_PARSE = "query_parse"
+    INTENT_CLASSIFY = "intent_classify"
+    RETRIEVE = "retrieve"
+    RERANK = "rerank"
+    CONTEXT_BUILD = "context_build"
+    PROMPT_ASSEMBLE = "prompt_assemble"
+    GENERATE = "generate"
+    POST_PROCESS = "post_process"
+
+@dataclass
+class PipelineContext:
+    """管道上下文"""
+    query: str
+    session_id: str
+    user_id: Optional[str] = None
+    intent: Optional[Any] = None
+    retrieval_results: Optional[List] = None
+    context: Optional[Dict] = None
+    prompt: Optional[Dict] = None
+    response: Optional[str] = None
+    metadata: Dict = None
+
+    def __post_init__(self):
+        if self.metadata is None:
+            self.metadata = {}
+
+class RAGPipeline:
+    """RAG 处理管道"""
+
+    def __init__(self, config: Dict):
+        self.config = config
+        self.nodes = {}
+        self.middlewares = []
+
+    def register_node(self, stage: PipelineStage, node: Callable):
+        """注册处理节点"""
+        self.nodes[stage] = node
+
+    def add_middleware(self, middleware: Callable):
+        """添加中间件"""
+        self.middlewares.append(middleware)
+
+    async def execute(self, query: str, **kwargs) -> PipelineContext:
+        """
+        执行完整管道 (非流式)
+        """
+        ctx = PipelineContext(query=query, **kwargs)
+
+        # 阶段 1: 查询解析
+        ctx = await self._execute_stage(
+            PipelineStage.QUERY_PARSE, ctx
+        )
+
+        # 阶段 2: 意图分类
+        ctx = await self._execute_stage(
+            PipelineStage.INTENT_CLASSIFY, ctx
+        )
+
+        # 如果需要澄清，提前返回
+        if ctx.intent and ctx.intent.requires_clarification:
+            ctx.response = "我需要更多信息来理解您的问题..."
+            return ctx
+
+        # 阶段 3: 检索
+        ctx = await self._execute_stage(
+            PipelineStage.RETRIEVE, ctx
+        )
+
+        # 阶段 4: 重排序
+        ctx = await self._execute_stage(
+            PipelineStage.RERANK, ctx
+        )
+
+        # 阶段 5: 上下文构建
+        ctx = await self._execute_stage(
+            PipelineStage.CONTEXT_BUILD, ctx
+        )
+
+        # 阶段 6: 提示词组装
+        ctx = await self._execute_stage(
+            PipelineStage.PROMPT_ASSEMBLE, ctx
+        )
+
+        # 阶段 7: 生成回答
+        ctx = await self._execute_stage(
+            PipelineStage.GENERATE, ctx
+        )
+
+        # 阶段 8: 后处理
+        ctx = await self._execute_stage(
+            PipelineStage.POST_PROCESS, ctx
+        )
+
+        return ctx
+
+    async def execute_stream(
+        self,
+        query: str,
+        **kwargs
+    ) -> AsyncIterator[str]:
+        """
+        执行流式管道 (SSE)
+        """
+        ctx = PipelineContext(query=query, **kwargs)
+
+        # 发送状态更新
+        yield self._format_sse("status", {"stage": "intent_classify"})
+
+        # 意图分类
+        ctx = await self._execute_stage(
+            PipelineStage.INTENT_CLASSIFY, ctx
+        )
+
+        if ctx.intent.requires_clarification:
+            yield self._format_sse("clarification", {
+                "message": "需要澄清",
+                "suggestions": ctx.intent.suggested_questions
+            })
+            return
+
+        # 检索阶段
+        yield self._format_sse("status", {"stage": "retrieving"})
+        ctx = await self._execute_stage(PipelineStage.RETRIEVE, ctx)
+        yield self._format_sse("retrieval", {
+            "found": len(ctx.retrieval_results),
+            "sources": [r.metadata.get("source") for r in ctx.retrieval_results]
+        })
+
+        # 生成阶段 (流式)
+        yield self._format_sse("status", {"stage": "generating"})
+        async for token in self._execute_stream_stage(ctx):
+            yield self._format_sse("token", {"content": token})
+
+        # 完成
+        yield self._format_sse("done", {
+            "session_id": ctx.session_id,
+            "citations": self._extract_citations(ctx)
+        })
+
+    async def _execute_stage(
+        self,
+        stage: PipelineStage,
+        ctx: PipelineContext
+    ) -> PipelineContext:
+        """执行单个阶段"""
+        if stage not in self.nodes:
+            return ctx
+
+        node = self.nodes[stage]
+
+        # 应用中间件
+        for middleware in self.middlewares:
+            ctx = await middleware.before_stage(stage, ctx)
+
+        # 执行节点
+        ctx = await node(ctx)
+
+        # 后置中间件
+        for middleware in self.middlewares:
+            ctx = await middleware.after_stage(stage, ctx)
+
+        return ctx
+
+    def _format_sse(self, event: str, data: Dict) -> str:
+        """格式化 SSE 消息"""
+        return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+```
+
+---
+
+## 三、数据流与接口设计
+
+### 3.1 核心数据流
+
+```
+┌─────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  User   │────→│  API Layer  │────→│   Service   │────→│   Engine    │
+│ Request │     │  (FastAPI)  │     │    Layer    │     │  (Pipeline) │
+└─────────┘     └─────────────┘     └─────────────┘     └──────┬──────┘
+                                                               │
+                    ┌──────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  User   │←────│  Response   │←────│   Format    │←────│    LLM      │
+│ Response│     │   (JSON/    │     │   Output    │     │  Generate   │
+│         │     │   SSE)      │     │             │     │             │
+└─────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+```
+
+### 3.2 API 接口设计
+
+```yaml
+# OpenAPI 规范
+
+# 1. 对话接口 (非流式)
+POST /api/v1/chat
+Request:
+  {
+    "query": "如何优化这段代码？",
+    "session_id": "optional-existing-session",
+    "context": {
+      "repository": "https://github.com/user/repo",
+      "branch": "main"
+    },
+    "stream": false
+  }
+
+Response:
+  {
+    "success": true,
+    "data": {
+      "session_id": "sess_xxx",
+      "response": "优化建议...",
+      "citations": [
+        {
+          "source": "file.py",
+          "content": "相关代码片段",
+          "relevance": 0.95
+        }
+      ],
+      "intent": {
+        "type": "code_review",
+        "confidence": 0.92
+      },
+      "metadata": {
+        "retrieval_time_ms": 150,
+        "generation_time_ms": 2000,
+        "total_tokens": 1500
+      }
+    }
+  }
+
+# 2. 流式对话接口
+POST /api/v1/chat/stream
+Request: (同上，stream: true)
+Response: SSE Stream
+  event: status
+  data: {"stage": "intent_classify"}
+
+  event: status
+  data: {"stage": "retrieving"}
+
+  event: retrieval
+  data: {"found": 5, "sources": ["file1.py", "file2.py"]}
+
+  event: status
+  data: {"stage": "generating"}
+
+  event: token
+  data: {"content": "优"}
+
+  event: token
+  data: {"content": "化"}
+
+  ...
+
+  event: done
+  data: {"session_id": "sess_xxx", "citations": [...]}
+
+# 3. 索引管理接口
+POST /api/v1/index/build
+Request:
+  {
+    "repository_url": "https://github.com/user/repo",
+    "branch": "main",
+    "build_mode": "full"  # or "incremental"
+  }
+
+Response:
+  {
+    "success": true,
+    "data": {
+      "task_id": "task_xxx",
+      "status": "queued",
+      "estimated_time": "5m"
+    }
+  }
+
+GET /api/v1/index/status/{task_id}
+Response:
+  {
+    "success": true,
+    "data": {
+      "task_id": "task_xxx",
+      "status": "processing",  # queued/processing/completed/failed
+      "progress": 65,
+      "message": "Indexing file 65/100..."
+    }
+  }
+
+# 4. 文档管理接口
+POST /api/v1/documents
+Request:
+  {
+    "content": "文档内容",
+    "metadata": {
+      "source": "manual",
+      "title": "API 文档",
+      "tags": ["api", "reference"]
+    }
+  }
+
+GET /api/v1/documents/{doc_id}
+DELETE /api/v1/documents/{doc_id}
+
+# 5. 意图分析接口 (调试)
+POST /api/v1/debug/intent
+Request:
+  {
+    "query": "解释一下这段代码"
+  }
+Response:
+  {
+    "success": true,
+    "data": {
+      "intent": "code_explain",
+      "confidence": 0.95,
+      "entities": {
+        "language": "python",
+        "keywords": ["explain", "code"]
+      }
+    }
+  }
+```
+
+---
+
+## 四、技术选型与依赖
+
+### 4.1 核心技术栈
+
+| 组件 | 选型 | 版本 | 说明 |
+|------|------|------|------|
+| **Web 框架** | FastAPI | ^0.109 | 高性能异步 API |
+| **ORM** | SQLAlchemy 2.0 | ^2.0 | 数据库 ORM |
+| **数据验证** | Pydantic | ^2.5 | 模型验证 |
+| **向量数据库** | Chroma/Milvus | - | 向量存储 |
+| **缓存** | Redis | ^5.0 | 缓存与会话 |
+| **LLM 框架** | LangChain | ^0.1 | LLM 编排 |
+| **HTTP 客户端** | httpx | ^0.26 | 异步 HTTP |
+| **配置管理** | Pydantic-Settings | ^2.1 | 环境配置 |
+| **日志** | structlog | ^24.1 | 结构化日志 |
+| **监控** | Prometheus Client | - | 指标采集 |
+
+### 4.2 requirements.txt
+
+```txt
+# Web Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+
+# Data & Validation
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+
+# Async
+httpx>=0.26.0
+aiofiles>=23.2.0
+
+# LLM & AI
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-community>=0.0.13
+openai>=1.10.0
+tiktoken>=0.5.0
+
+# Vector DB
+chromadb>=0.4.0
+# 或
+# pymilvus>=2.3.0
+
+# Embeddings
+sentence-transformers>=2.2.0
+
+# Document Processing
+pypdf>=4.0.0
+python-docx>=1.1.0
+markdown>=3.5.0
+beautifulsoup4>=4.12.0
+
+# Text Processing
+jinja2>=3.1.0
+regex>=2023.12.0
+
+# Cache & Storage
+redis>=5.0.0
+boto3>=1.34.0  # S3/MinIO
+
+# Database Drivers
+asyncpg>=0.29.0  # PostgreSQL
+aiomysql>=0.2.0  # MySQL
+psycopg2-binary>=2.9.0
+
+# Utilities
+python-json-logger>=2.0.0
+structlog>=24.1.0
+tenacity>=8.2.0
+orjson>=3.9.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+httpx>=0.26.0
+pytest-cov>=4.1.0
+
+# Development
+black>=24.0.0
+isort>=5.13.0
+mypy>=1.8.0
+ruff>=0.1.0
+```
+
+---
+
+## 五、开发阶段规划
+
+### 阶段一：基础架构搭建 (Week 1-2)
+
+**目标**: 搭建项目骨架，实现基础功能
+
+**任务清单**:
+- [ ] 项目初始化与目录结构
+- [ ] FastAPI 应用框架搭建
+- [ ] 数据库模型设计 (SQLAlchemy)
+- [ ] 配置管理系统
+- [ ] 日志与异常处理
+- [ ] Docker 开发环境
+
+**交付物**:
+- 可运行的基础 API 服务
+- 数据库迁移脚本
+- Docker Compose 配置
+
+### 阶段二：核心 RAG 引擎 (Week 3-4)
+
+**目标**: 实现 RAG 核心流程
+
+**任务清单**:
+- [ ] 文档加载与切分模块
+- [ ] Embedding 服务集成
+- [ ] 向量存储 (Chroma) 集成
+- [ ] 基础检索功能 (向量检索)
+- [ ] 提示词模板系统
+- [ ] LLM 调用封装
+
+**交付物**:
+- 完整的 RAG Pipeline
+- 索引构建 API
+- 基础对话 API
+
+### 阶段三：意图识别与排序 (Week 5-6)
+
+**目标**: 提升检索质量与意图理解
+
+**任务清单**:
+- [ ] 意图分类服务
+- [ ] 混合检索 (向量 + 关键词)
+- [ ] RRF 融合算法
+- [ ] 重排序模型集成
+- [ ] 上下文压缩优化
+
+**交付物**:
+- 意图识别 API
+- 优化后的检索服务
+- 排序评估指标
+
+### 阶段四：高级功能 (Week 7-8)
+
+**目标**: 增强用户体验与系统能力
+
+**任务清单**:
+- [ ] 流式响应 (SSE)
+- [ ] 对话历史管理
+- [ ] 引用溯源功能
+- [ ] 多模态支持 (代码高亮)
+- [ ] 缓存优化
+- [ ] 限流与降级
+
+**交付物**:
+- 流式对话接口
+- 会话管理功能
+- 性能优化方案
+
+### 阶段五：生产就绪 (Week 9-10)
+
+**目标**: 系统稳定运行与监控
+
+**任务清单**:
+- [ ] 单元测试与集成测试
+- [ ] API 文档 (OpenAPI)
+- [ ] 监控与告警 (Prometheus)
+- [ ] 性能压测
+- [ ] 部署文档
+- [ ] 安全加固
+
+**交付物**:
+- 测试覆盖率报告
+- 部署脚本
+- 运维手册
+
+---
+
+## 六、关键设计决策
+
+### 6.1 检索策略选择
+
+| 策略 | 适用场景 | 实现复杂度 |
+|------|----------|-----------|
+| 纯向量检索 | 语义相似度要求高 | 低 |
+| 混合检索 (RRF) | 需要关键词精确匹配 | 中 |
+| 多路召回 + 精排 | 大规模文档库 | 高 |
+
+**建议**: 初期使用 **混合检索 (RRF)**，兼顾实现复杂度与效果。
+
+### 6.2 意图识别方案
+
+| 方案 | 优点 | 缺点 |
+|------|------|------|
+| 规则匹配 | 快速、可控 | 扩展性差 |
+| 分类模型 (BERT) | 准确率高 | 需要训练数据 |
+| LLM Zero-shot | 无需训练、灵活 | 延迟高、成本高 |
+
+**建议**: 初期使用 **LLM Zero-shot**，后期根据数据积累迁移到分类模型。
+
+### 6.3 向量数据库选型
+
+| 数据库 | 特点 | 适用规模 |
+|--------|------|----------|
+| Chroma | 轻量、易用、本地优先 | < 100万文档 |
+| Milvus | 分布式、高性能 | > 100万文档 |
+| Qdrant | Rust 实现、高性能 | 中等规模 |
+| Weaviate | 功能丰富、GraphQL | 企业级 |
+
+**建议**: 初期使用 **Chroma**，数据量增长后迁移到 **Milvus**。
+
+---

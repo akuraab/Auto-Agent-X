@@ -1,0 +1,218 @@
+
+==================================================
+TIME: 2026-02-22T03:29:29.464876
+SESSION: 8962b2ef-8bc6-49f7-9648-15f9777b49de
+STEP: START_REQUEST_STREAM
+DETAILS:
+{
+  "query": "1+1等于多少？"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:29:45.414629
+SESSION: 8962b2ef-8bc6-49f7-9648-15f9777b49de
+STEP: INTENT_CLASSIFIED
+DETAILS:
+{
+  "intent": "casual_chat",
+  "confidence": 0.99,
+  "entities": {
+    "language": null,
+    "component": null,
+    "keywords": [
+      "1+1",
+      "等于多少"
+    ]
+  },
+  "suggested_prompt_template": "casual_chat_response",
+  "requires_clarification": false
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:29:45.416640
+SESSION: 8962b2ef-8bc6-49f7-9648-15f9777b49de
+STEP: RETRIEVAL_SKIPPED
+DETAILS:
+{
+  "reason": "casual_chat intent"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:29:45.416640
+SESSION: 8962b2ef-8bc6-49f7-9648-15f9777b49de
+STEP: PROMPT_SELECTED
+DETAILS:
+{
+  "template_id": "casual_chat_response"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:29:45.418203
+SESSION: 8962b2ef-8bc6-49f7-9648-15f9777b49de
+STEP: LLM_INPUT
+DETAILS:
+{
+  "template_id": "casual_chat_response",
+  "context_preview": "",
+  "question": "1+1等于多少？"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:29:55.779801
+SESSION: 8962b2ef-8bc6-49f7-9648-15f9777b49de
+STEP: LLM_OUTPUT_STREAM_COMPLETE
+DETAILS:
+{
+  "response_length": 5
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:33:00.039140
+SESSION: f0137f50-78bb-4aad-a948-cba4b67f7f2f
+STEP: START_REQUEST_STREAM
+DETAILS:
+{
+  "query": "hi"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:33:16.759966
+SESSION: f0137f50-78bb-4aad-a948-cba4b67f7f2f
+STEP: INTENT_CLASSIFIED
+DETAILS:
+{
+  "intent": "casual_chat",
+  "confidence": 0.99,
+  "entities": {
+    "language": null,
+    "component": null,
+    "keywords": [
+      "hi"
+    ]
+  },
+  "suggested_prompt_template": "casual_chat_v1",
+  "requires_clarification": false
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:33:16.760997
+SESSION: f0137f50-78bb-4aad-a948-cba4b67f7f2f
+STEP: RETRIEVAL_SKIPPED
+DETAILS:
+{
+  "reason": "casual_chat intent"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:33:16.762032
+SESSION: f0137f50-78bb-4aad-a948-cba4b67f7f2f
+STEP: PROMPT_SELECTED
+DETAILS:
+{
+  "template_id": "casual_chat_v1"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:33:16.763055
+SESSION: f0137f50-78bb-4aad-a948-cba4b67f7f2f
+STEP: LLM_INPUT
+DETAILS:
+{
+  "template_id": "casual_chat_v1",
+  "context_preview": "",
+  "question": "hi"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:33:20.033298
+SESSION: f0137f50-78bb-4aad-a948-cba4b67f7f2f
+STEP: LLM_OUTPUT_STREAM_COMPLETE
+DETAILS:
+{
+  "response_length": 34
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:33:43.403568
+SESSION: a4f7ef69-7c7d-402b-a8aa-d9e4fab78707
+STEP: START_REQUEST_STREAM
+DETAILS:
+{
+  "query": "1+1等于多少？"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:34:07.705553
+SESSION: a4f7ef69-7c7d-402b-a8aa-d9e4fab78707
+STEP: INTENT_CLASSIFIED
+DETAILS:
+{
+  "intent": "casual_chat",
+  "confidence": 0.95,
+  "entities": {
+    "language": null,
+    "component": null,
+    "keywords": [
+      "1+1",
+      "等于多少"
+    ]
+  },
+  "suggested_prompt_template": "casual_chat_v1",
+  "requires_clarification": false
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:34:07.707559
+SESSION: a4f7ef69-7c7d-402b-a8aa-d9e4fab78707
+STEP: RETRIEVAL_SKIPPED
+DETAILS:
+{
+  "reason": "casual_chat intent"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:34:07.708559
+SESSION: a4f7ef69-7c7d-402b-a8aa-d9e4fab78707
+STEP: PROMPT_SELECTED
+DETAILS:
+{
+  "template_id": "casual_chat_v1"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:34:07.709559
+SESSION: a4f7ef69-7c7d-402b-a8aa-d9e4fab78707
+STEP: LLM_INPUT
+DETAILS:
+{
+  "template_id": "casual_chat_v1",
+  "context_preview": "",
+  "question": "1+1等于多少？"
+}
+==================================================
+
+==================================================
+TIME: 2026-02-22T03:34:16.671323
+SESSION: a4f7ef69-7c7d-402b-a8aa-d9e4fab78707
+STEP: LLM_OUTPUT_STREAM_COMPLETE
+DETAILS:
+{
+  "response_length": 9
+}
+==================================================
