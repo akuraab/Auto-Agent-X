@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_API_BASE: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    MODEL_NAME: str = "qwen3.5-plus"
+    MODEL_NAME: str = "qwen3.5-flash"
     
     # Vector DB
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"

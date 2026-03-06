@@ -3,10 +3,10 @@ import { Send, User, Bot, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  citations?: Array<{ source: string; content: string; relevance: number }>;
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    citations?: Array<{ source: string; content: string; relevance: number }>;
 }
 
 export default function Chat() {
@@ -115,10 +115,10 @@ export default function Chat() {
                     console.error("Error parsing done data", e);
                 }
             } else if (eventType === 'clarification') {
-                 try {
-                     const parsed = JSON.parse(data);
-                     assistantMessageContent += `\n\n[Clarification Needed]: ${parsed.message}`;
-                     setMessages(prev => prev.map(msg => 
+                try {
+                    const parsed = JSON.parse(data);
+                    assistantMessageContent += `\n\n[Clarification Needed]: ${parsed.message}`;
+                    setMessages(prev => prev.map(msg => 
                         msg.id === 'temp-assistant' 
                             ? { ...msg, content: assistantMessageContent }
                             : msg
@@ -126,7 +126,7 @@ export default function Chat() {
                 } catch (e) {}
             }
         }
-      }
+    }
       
     } catch (error) {
       console.error('Error:', error);
