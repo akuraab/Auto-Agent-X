@@ -36,6 +36,7 @@ export default function Chat() {
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+    const assistantMessageId = `${Date.now()}-assistant`;
 
     try {
       const response = await fetch('/api/v1/chat/stream', {
@@ -44,6 +45,19 @@ export default function Chat() {
         body: JSON.stringify({ query: userMessage.content, stream: true }),
       });
 
+      if (!response.ok) {
+        const responseText = await response.text();
+        let message = `Request failed with status ${response.status}`;
+        if (responseText) {
+          try {
+            const parsed = JSON.parse(responseText);
+            message = parsed.detail || message;
+          } catch {
+            message = responseText;
+          }
+        }
+        throw new Error(message);
+      }
       if (!response.body) throw new Error('No response body');
 
       const reader = response.body.getReader();
@@ -52,7 +66,7 @@ export default function Chat() {
       
       // Add empty assistant message
       setMessages(prev => [...prev, {
-          id: 'temp-assistant', 
+          id: assistantMessageId,
           role: 'assistant', 
           content: ''
       }]);
@@ -92,7 +106,7 @@ export default function Chat() {
                     assistantMessageContent += parsed.content;
                     
                     setMessages(prev => prev.map(msg => 
-                        msg.id === 'temp-assistant' 
+                        msg.id === assistantMessageId
                             ? { ...msg, content: assistantMessageContent }
                             : msg
                     ));
@@ -103,7 +117,7 @@ export default function Chat() {
                 try {
                      const parsed = JSON.parse(data);
                      setMessages(prev => prev.map(msg => 
-                        msg.id === 'temp-assistant'
+                        msg.id === assistantMessageId
                             ? { 
                                 ...msg, 
                                 citations: parsed.citations, 
@@ -119,11 +133,25 @@ export default function Chat() {
                     const parsed = JSON.parse(data);
                     assistantMessageContent += `\n\n[Clarification Needed]: ${parsed.message}`;
                     setMessages(prev => prev.map(msg => 
-                        msg.id === 'temp-assistant' 
+                        msg.id === assistantMessageId
                             ? { ...msg, content: assistantMessageContent }
                             : msg
                     ));
-                } catch (e) {}
+                } catch (error) {
+                    console.error('Error parsing clarification data', error);
+                }
+            } else if (eventType === 'error') {
+                try {
+                    const parsed = JSON.parse(data);
+                    assistantMessageContent += `${assistantMessageContent ? '\n\n' : ''}${parsed.message}`;
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === assistantMessageId
+                            ? { ...msg, content: assistantMessageContent }
+                            : msg
+                    ));
+                } catch (error) {
+                    console.error('Error parsing stream error data', error);
+                }
             }
         }
     }
@@ -131,11 +159,13 @@ export default function Chat() {
     } catch (error) {
       console.error('Error:', error);
       setMessages((prev) => [
-        ...prev,
+        ...prev.filter((message) => message.id !== assistantMessageId),
         {
           id: Date.now().toString(),
           role: 'assistant',
-          content: 'Sorry, something went wrong. Please try again.',
+          content: error instanceof Error
+            ? error.message
+            : 'Sorry, something went wrong. Please try again.',
         },
       ]);
     } finally {
